@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Angry Birds AR — Slingshot Challenge</title>
+<script src="./lib/aframe.min.js"></script>
+<script src="./lib/mindar-image-aframe.prod.js"></script>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
+
+  /* ---- Start Screen ---- */
+  #start-screen{
+    position:fixed;inset:0;z-index:100;
+    background:linear-gradient(135deg,#1a5c1a 0%,#2d8f2d 40%,#5cb85c 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;color:#fff;padding:24px;
+  }
+  #start-screen h1{
+    font-size:36px;margin:0 0 4px;
+    text-shadow:3px 3px 0 #c0392b,-1px -1px 0 #e74c3c;
+    color:#ffcf33;letter-spacing:1px;
+  }
+  #start-screen h2{font-size:16px;margin:0 0 20px;opacity:.85;font-weight:400}
+  #start-screen .bird-icon{font-size:72px;margin-bottom:12px}
+  #start-screen p{max-width:320px;font-size:14px;opacity:.8;line-height:1.5;margin:0 0 24px}
+  #start-screen button{
+    font-size:20px;padding:14px 40px;border:0;border-radius:50px;cursor:pointer;
+    background:linear-gradient(180deg,#ff4444,#cc0000);color:#fff;font-weight:800;
+    text-shadow:1px 1px 2px rgba(0,0,0,.3);
+    box-shadow:0 4px 15px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.2);
+    transition:transform .1s;
+  }
+  #start-screen button:active{transform:scale(.95)}
+
+  /* ---- HUD ---- */
+  #hud{
+    position:fixed;top:0;left:0;right:0;z-index:10;pointer-events:none;
+    display:flex;justify-content:space-between;align-items:flex-start;
+    padding:12px 16px;
+  }
+  #score-box{
+    background:rgba(0,0,0,.6);border-radius:12px;padding:8px 16px;
+    color:#ffcf33;font-weight:800;font-size:20px;
+    text-shadow:0 1px 3px #000;
+  }
+  #birds-left{
+    background:rgba(0,0,0,.6);border-radius:12px;padding:8px 16px;
+    color:#fff;font-weight:600;font-size:16px;
+  }
+  #hint{
+    position:fixed;bottom:20px;left:0;right:0;text-align:center;
+    color:#fff;text-shadow:0 2px 6px #000;z-index:10;pointer-events:none;
+    font-size:15px;font-weight:600;
+  }
+
+  /* ---- Game Over Overlay ---- */
+  #game-over{
+    position:fixed;inset:0;z-index:50;display:none;
+    background:rgba(0,0,0,.75);
+    flex-direction:column;align-items:center;justify-content:center;color:#fff;
+  }
+  #game-over.show{display:flex}
+  #game-over h1{font-size:40px;color:#ffcf33;text-shadow:2px 2px 0 #c0392b;margin:0 0 8px}
+  #game-over .final-score{font-size:28px;margin:8px 0 24px}
+  #game-over .stars{font-size:48px;margin:0 0 20px}
+  #game-over button{
+    font-size:18px;padding:12px 36px;border:0;border-radius:50px;cursor:pointer;
+    background:linear-gradient(180deg,#4CAF50,#2e7d32);color:#fff;font-weight:700;
+    box-shadow:0 4px 12px rgba(0,0,0,.3);margin:6px;
+  }
+
+  /* ---- Slingshot Pull Indicator ---- */
+  #pull-indicator{
+    position:fixed;bottom:100px;left:50%;transform:translateX(-50%);
+    z-index:10;pointer-events:none;display:none;
+    background:rgba(0,0,0,.7);border-radius:12px;padding:8px 18px;
+    color:#ff6b6b;font-weight:700;font-size:16px;
+    text-shadow:0 1px 2px #000;
+  }
+
+  /* ---- Credit ---- */
+  #credit{
+    position:fixed;top:12px;right:16px;z-index:10;pointer-events:none;
+    color:#fff;font-size:11px;opacity:.7;text-align:right;
+    text-shadow:0 1px 3px #000;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ START SCREEN ============ -->
+<div id="start-screen">
+  <div class="bird-icon">🐦</div>
+  <h1>ANGRY BIRDS AR</h1>
+  <h2>Slingshot Challenge</h2>
+  <p>Point your camera at the Angry Birds poster. The Red Bird will come to life! Pull the slingshot back and launch it at the pigs' tower to destroy them.</p>
+  <button id="go">▶ START</button>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud">
+  <div id="score-box">Score: 0</div>
+  <div id="birds-left">🐦 × 3</div>
+</div>
+<div id="hint">Scanning for poster…</div>
+<div id="pull-indicator">↕ Pull to aim!</div>
+
+
+<!-- ============ GAME OVER ============ -->
+<div id="game-over">
+  <h1>LEVEL COMPLETE!</h1>
+  <div class="stars" id="stars">⭐⭐⭐</div>
+  <div class="final-score" id="final-score">Score: 0</div>
+  <button id="replay-btn">🔄 Play Again</button>
+</div>
+
+<!-- ============ A-FRAME SCENE ============ -->
+<a-scene
+  mindar-image="imageTargetSrc: ./assets/poster.mind; autoStart: false; uiScanning: no; uiLoading: no; filterMinCF:0.0001; filterBeta:0.001"
+  color-space="sRGB"
+  renderer="colorManagement: true; physicallyCorrectLights: true"
+  embedded vr-mode-ui="enabled: false"
+  device-orientation-permission-ui="enabled: false"
+  angry-birds-game>
+  <a-camera position="0 0 0" look-controls="enabled: false" cursor="fuse: false; rayOrigin: mouse"
+            raycaster="far: 10000; objects: .tap"></a-camera>
+  <a-entity mindar-image-target="targetIndex: 0" id="target"></a-entity>
+
+  <!-- Stage: persists even after poster tracking is lost -->
+  <a-entity id="stage" visible="false">
+    <a-light type="ambient" intensity="0.9"></a-light>
+    <a-light type="directional" intensity="1.2" position="0.5 1 1"></a-light>
+    <a-light type="point" intensity="0.5" position="0 0.3 0.3" color="#fff4e0"></a-light>
+
+    <!-- Ground plane -->
+    <a-entity id="ground"></a-entity>
+
+    <!-- Slingshot -->
+    <a-entity id="slingshot"></a-entity>
+
+    <!-- Bird on slingshot -->
+    <a-entity id="red-bird"></a-entity>
+
+    <!-- Tower with pigs -->
+    <a-entity id="tower"></a-entity>
+
+    <!-- Projectile birds in flight -->
+    <a-entity id="projectiles"></a-entity>
+
+    <!-- Particles -->
+    <a-entity id="particles"></a-entity>
+  </a-entity>
+</a-scene>
+
+<script>
+/* =================================================================
+   ANGRY BIRDS AR — SLINGSHOT MINI-GAME
+   Built on MindAR (image tracking) + A-Frame (3D rendering).
+   All geometry is procedural — no external models needed.
+   ================================================================= */
+
+// ---- Audio Context (unlocked on user gesture) ----
+let actx;
+function blip(f0, f1, dur, type='square', vol=0.1) {
+  if (!actx) return;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(f0, actx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(f1, actx.currentTime + dur);
+  g.gain.setValueAtTime(vol, actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+  o.connect(g).connect(actx.destination);
+  o.start(); o.stop(actx.currentTime + dur);
+}
+const sfx = {
+  launch:  () => { blip(220, 880, 0.3, 'sawtooth', 0.12); setTimeout(() => blip(660, 440, 0.15, 'triangle', 0.08), 150); },
+  hit:     () => { blip(180, 60, 0.25, 'square', 0.15); blip(120, 40, 0.3, 'sawtooth', 0.1); },
+  destroy: () => { blip(300, 50, 0.4, 'sawtooth', 0.12); setTimeout(() => blip(100, 30, 0.3, 'square', 0.1), 100); },
+  pigOink: () => { blip(400, 600, 0.1, 'sine', 0.08); setTimeout(() => blip(500, 350, 0.15, 'sine', 0.07), 120); },
+  victory: () => { [0,150,300,450].forEach((d,i) => setTimeout(() => blip(400+i*100, 500+i*100, 0.2, 'sine', 0.1), d)); },
+  pull:    () => { blip(150, 200, 0.05, 'sine', 0.04); },
+};
+
+/* ---- Helper: create A-Frame entity ---- */
+function mk(tag, attrs, parent) {
+  const e = document.createElement(tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+/* ==================================
+   PROCEDURAL RED BIRD (Angry Birds)
+   ================================== */
+function createRedBird(parent, scale = 1) {
+  const bird = mk('a-entity', {}, parent);
+
+  // Body - main red sphere
+  mk('a-sphere', {
+    radius: 0.04 * scale, color: '#cc0000',
+    'segments-width': 20, 'segments-height': 16, class: 'tap'
+  }, bird);
+
+  // Belly - lighter red
+  mk('a-sphere', {
+    radius: 0.028 * scale, color: '#ff4444',
+    position: `0 ${-0.012*scale} ${0.02*scale}`,
+    scale: '1.1 0.8 0.7'
+  }, bird);
+
+  // Eyes - white
+  mk('a-sphere', {
+    radius: 0.014 * scale, color: '#ffffff',
+    position: `${-0.015*scale} ${0.012*scale} ${0.032*scale}`,
+    scale: '1 1.1 0.6'
+  }, bird);
+  mk('a-sphere', {
+    radius: 0.014 * scale, color: '#ffffff',
+    position: `${0.015*scale} ${0.012*scale} ${0.032*scale}`,
+    scale: '1 1.1 0.6'
+  }, bird);
+
+  // Pupils - black
+  mk('a-sphere', {
+    radius: 0.007 * scale, color: '#000000',
+    position: `${-0.015*scale} ${0.012*scale} ${0.038*scale}`
+  }, bird);
+  mk('a-sphere', {
+    radius: 0.007 * scale, color: '#000000',
+    position: `${0.015*scale} ${0.012*scale} ${0.038*scale}`
+  }, bird);
+
+  // Angry eyebrows
+  mk('a-box', {
+    width: 0.03 * scale, height: 0.006 * scale, depth: 0.006 * scale,
+    color: '#1a1a1a',
+    position: `${-0.013*scale} ${0.024*scale} ${0.032*scale}`,
+    rotation: '0 0 25'
+  }, bird);
+  mk('a-box', {
+    width: 0.03 * scale, height: 0.006 * scale, depth: 0.006 * scale,
+    color: '#1a1a1a',
+    position: `${0.013*scale} ${0.024*scale} ${0.032*scale}`,
+    rotation: '0 0 -25'
+  }, bird);
+
+  // Beak - orange/yellow
+  mk('a-cone', {
+    'radius-bottom': 0.012 * scale, 'radius-top': 0,
+    height: 0.025 * scale, color: '#ff9900',
+    position: `0 ${0.002*scale} ${0.045*scale}`,
+    rotation: '90 0 0'
+  }, bird);
+  // Lower beak
+  mk('a-cone', {
+    'radius-bottom': 0.009 * scale, 'radius-top': 0,
+    height: 0.018 * scale, color: '#ff7700',
+    position: `0 ${-0.006*scale} ${0.042*scale}`,
+    rotation: '110 0 0'
+  }, bird);
+
+  // Head feathers (crest) — two red feathers on top
+  mk('a-cone', {
+    'radius-bottom': 0.008 * scale, 'radius-top': 0,
+    height: 0.03 * scale, color: '#cc0000',
+    position: `${-0.005*scale} ${0.045*scale} ${-0.005*scale}`,
+    rotation: '0 0 10'
+  }, bird);
+  mk('a-cone', {
+    'radius-bottom': 0.008 * scale, 'radius-top': 0,
+    height: 0.035 * scale, color: '#aa0000',
+    position: `${0.005*scale} ${0.048*scale} ${-0.008*scale}`,
+    rotation: '0 0 -8'
+  }, bird);
+
+  // Tail feathers
+  mk('a-box', {
+    width: 0.006 * scale, height: 0.03 * scale, depth: 0.004 * scale,
+    color: '#1a1a1a',
+    position: `${-0.008*scale} ${0.01*scale} ${-0.04*scale}`,
+    rotation: '-20 0 15'
+  }, bird);
+  mk('a-box', {
+    width: 0.006 * scale, height: 0.035 * scale, depth: 0.004 * scale,
+    color: '#1a1a1a',
+    position: `0 ${0.015*scale} ${-0.042*scale}`,
+    rotation: '-25 0 0'
+  }, bird);
+  mk('a-box', {
+    width: 0.006 * scale, height: 0.03 * scale, depth: 0.004 * scale,
+    color: '#1a1a1a',
+    position: `${0.008*scale} ${0.01*scale} ${-0.04*scale}`,
+    rotation: '-20 0 -15'
+  }, bird);
+
+  return bird;
+}
+
+/* ==================================
+   PROCEDURAL GREEN PIG
+   ================================== */
+function createPig(parent, scale = 1) {
+  const pig = mk('a-entity', {}, parent);
+
+  // Body
+  mk('a-sphere', {
+    radius: 0.028 * scale, color: '#5cb85c',
+    'segments-width': 16, 'segments-height': 12
+  }, pig);
+
+  // Snout
+  mk('a-sphere', {
+    radius: 0.015 * scale, color: '#4cae4c',
+    position: `0 ${-0.005*scale} ${0.022*scale}`,
+    scale: '1.2 0.8 0.6'
+  }, pig);
+
+  // Nostrils
+  mk('a-sphere', {
+    radius: 0.003 * scale, color: '#3d8b3d',
+    position: `${-0.005*scale} ${-0.005*scale} ${0.028*scale}`
+  }, pig);
+  mk('a-sphere', {
+    radius: 0.003 * scale, color: '#3d8b3d',
+    position: `${0.005*scale} ${-0.005*scale} ${0.028*scale}`
+  }, pig);
+
+  // Eyes
+  mk('a-sphere', {
+    radius: 0.01 * scale, color: '#ffffff',
+    position: `${-0.012*scale} ${0.01*scale} ${0.02*scale}`,
+    scale: '1 1.1 0.6'
+  }, pig);
+  mk('a-sphere', {
+    radius: 0.01 * scale, color: '#ffffff',
+    position: `${0.012*scale} ${0.01*scale} ${0.02*scale}`,
+    scale: '1 1.1 0.6'
+  }, pig);
+
+  // Pupils
+  mk('a-sphere', {
+    radius: 0.005 * scale, color: '#1a1a1a',
+    position: `${-0.012*scale} ${0.01*scale} ${0.025*scale}`
+  }, pig);
+  mk('a-sphere', {
+    radius: 0.005 * scale, color: '#1a1a1a',
+    position: `${0.012*scale} ${0.01*scale} ${0.025*scale}`
+  }, pig);
+
+  // Crown / ears
+  mk('a-sphere', {
+    radius: 0.008 * scale, color: '#5cb85c',
+    position: `${-0.018*scale} ${0.022*scale} 0`
+  }, pig);
+  mk('a-sphere', {
+    radius: 0.008 * scale, color: '#5cb85c',
+    position: `${0.018*scale} ${0.022*scale} 0`
+  }, pig);
+
+  return pig;
+}
+
+/* ==================================
+   SLINGSHOT
+   ================================== */
+function createSlingshot(parent) {
+  const sling = mk('a-entity', {}, parent);
+
+  // Left prong
+  mk('a-cylinder', {
+    radius: 0.008, height: 0.12, color: '#8B4513',
+    position: '-0.025 0.03 0', rotation: '0 0 8'
+  }, sling);
+  // Right prong
+  mk('a-cylinder', {
+    radius: 0.008, height: 0.12, color: '#8B4513',
+    position: '0.025 0.03 0', rotation: '0 0 -8'
+  }, sling);
+  // Base
+  mk('a-cylinder', {
+    radius: 0.012, height: 0.08, color: '#6B3410',
+    position: '0 -0.04 0'
+  }, sling);
+  // Fork connector
+  mk('a-cylinder', {
+    radius: 0.006, height: 0.055, color: '#A0522D',
+    position: '0 0.06 0', rotation: '0 0 90'
+  }, sling);
+
+  // Rubber band (left)
+  mk('a-cylinder', {
+    radius: 0.003, height: 0.04, color: '#8B0000',
+    position: '-0.02 0.07 0.01', rotation: '20 0 15',
+    id: 'band-left'
+  }, sling);
+  // Rubber band (right)
+  mk('a-cylinder', {
+    radius: 0.003, height: 0.04, color: '#8B0000',
+    position: '0.02 0.07 0.01', rotation: '20 0 -15',
+    id: 'band-right'
+  }, sling);
+
+  return sling;
+}
+
+/* ==================================
+   WOODEN BLOCK
+   ================================== */
+function createWoodBlock(parent, w, h, d, pos, rot='0 0 0') {
+  const block = mk('a-box', {
+    width: w, height: h, depth: d,
+    color: '#D2691E', position: pos, rotation: rot,
+    class: 'block'
+  }, parent);
+  // Wood grain lines
+  mk('a-box', {
+    width: w * 0.9, height: 0.002, depth: d * 0.9,
+    color: '#A0522D', position: `0 ${h*0.15} 0`
+  }, block);
+  mk('a-box', {
+    width: w * 0.9, height: 0.002, depth: d * 0.9,
+    color: '#A0522D', position: `0 ${-h*0.15} 0`
+  }, block);
+  return block;
+}
+
+/* ==================================
+   TOWER STRUCTURE (with pigs)
+   ================================== */
+function createTower(parent) {
+  const tower = mk('a-entity', {}, parent);
+
+  // ---- Layer 1: Ground level ----
+  // Two vertical pillars
+  createWoodBlock(tower, 0.015, 0.06, 0.015, '-0.03 -0.19 0');
+  createWoodBlock(tower, 0.015, 0.06, 0.015, '0.03 -0.19 0');
+  // Horizontal beam
+  createWoodBlock(tower, 0.09, 0.012, 0.015, '0 -0.154 0');
+
+  // Pig 1: ground level
+  const pig1 = createPig(tower, 0.7);
+  pig1.object3D.position.set(0, -0.18, 0.01);
+  pig1.setAttribute('id', 'pig-1');
+  pig1.classList.add('pig');
+
+  // ---- Layer 2: Middle ----
+  createWoodBlock(tower, 0.015, 0.05, 0.015, '-0.025 -0.123 0');
+  createWoodBlock(tower, 0.015, 0.05, 0.015, '0.025 -0.123 0');
+  createWoodBlock(tower, 0.08, 0.012, 0.015, '0 -0.092 0');
+
+  // Pig 2: middle level
+  const pig2 = createPig(tower, 0.65);
+  pig2.object3D.position.set(0, -0.115, 0.01);
+  pig2.setAttribute('id', 'pig-2');
+  pig2.classList.add('pig');
+
+  // ---- Layer 3: Top ----
+  createWoodBlock(tower, 0.012, 0.04, 0.012, '-0.02 -0.067 0');
+  createWoodBlock(tower, 0.012, 0.04, 0.012, '0.02 -0.067 0');
+  // Roof triangle
+  mk('a-cone', {
+    'radius-bottom': 0.045, 'radius-top': 0,
+    height: 0.04, color: '#8B4513',
+    position: '0 -0.032 0'
+  }, tower);
+
+  // Pig 3: top (the king pig — slightly bigger)
+  const pig3 = createPig(tower, 0.55);
+  pig3.object3D.position.set(0, -0.055, 0.01);
+  pig3.setAttribute('id', 'pig-3');
+  pig3.classList.add('pig');
+
+  // Some extra decorative blocks around base
+  createWoodBlock(tower, 0.02, 0.025, 0.015, '-0.06 -0.207 0');
+  createWoodBlock(tower, 0.02, 0.025, 0.015, '0.06 -0.207 0');
+  createWoodBlock(tower, 0.015, 0.03, 0.012, '-0.055 -0.19 0', '0 0 15');
+  createWoodBlock(tower, 0.015, 0.03, 0.012, '0.055 -0.19 0', '0 0 -15');
+
+  return tower;
+}
+
+/* ==================================
+   GROUND
+   ================================== */
+function createGround(parent) {
+  // Green ground plane
+  mk('a-box', {
+    width: 1.2, height: 0.01, depth: 0.4,
+    color: '#4CAF50', position: '0 -0.225 0'
+  }, parent);
+  // Dirt layer
+  mk('a-box', {
+    width: 1.2, height: 0.008, depth: 0.4,
+    color: '#8B6914', position: '0 -0.233 0'
+  }, parent);
+}
+
+/* ==================================
+   MAIN GAME COMPONENT
+   ================================== */
+AFRAME.registerComponent('angry-birds-game', {
+  init() {
+    const scene = this.el;
+    this.target = document.getElementById('target');
+    this.stage = document.getElementById('stage');
+    this.projectilesEl = document.getElementById('projectiles');
+    this.particlesEl = document.getElementById('particles');
+
+    // ---- Game State ----
+    this.score = 0;
+    this.birdsRemaining = 3;
+    this.pigsAlive = 3;
+    this.gameActive = false;
+    this.posterFound = false;
+    this.birdOnSling = null;
+    this.projectiles = [];
+    this.particles = [];
+    this.blocks = [];
+    this.pigs = [];
+    this.isAiming = false;
+    this.aimStartY = 0;
+    this.pullPower = 0;
+    this.pullAngle = 0;
+    this.launched = false;
+    this.canLaunch = true;
+    this.birdResetTimer = 0;
+
+    // Slingshot position (left side of scene)
+    this.slingPos = { x: -0.35, y: -0.16, z: 0.05 };
+    // Tower position (right side)
+    this.towerPos = { x: 0.2, y: 0, z: 0 };
+
+    // ---- Build the scene ----
+    createGround(document.getElementById('ground'));
+
+    const slingEl = document.getElementById('slingshot');
+    createSlingshot(slingEl);
+    slingEl.object3D.position.set(this.slingPos.x, this.slingPos.y, this.slingPos.z);
+
+    const towerEl = document.getElementById('tower');
+    this.towerEntity = createTower(towerEl);
+    towerEl.object3D.position.set(this.towerPos.x, this.towerPos.y, this.towerPos.z);
+
+    // Create the first bird on the slingshot
+    this.placeBirdOnSling();
+
+    // ---- Poster tracking ----
+    const hint = document.getElementById('hint');
+    this.target.addEventListener('targetFound', () => {
+      hint.textContent = 'Poster found! Tap the bird to aim, then release to launch!';
+      setTimeout(() => { hint.style.opacity = '0'; setTimeout(() => hint.style.display = 'none', 500); }, 3500);
+      this.posterFound = true;
+      this.stage.object3D.visible = true;
+      this.gameActive = true;
+    });
+
+    // ---- Touch/Mouse controls for aiming ----
+    const canvas = scene.canvas;
+    const onDown = (e) => {
+      if (!this.gameActive || !this.canLaunch || !this.birdOnSling) return;
+      e.preventDefault();
+      this.isAiming = true;
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
+      const x = e.touches ? e.touches[0].clientX : e.clientX;
+      this.aimStartY = y;
+      this.aimStartX = x;
+      this.pullPower = 0;
+      document.getElementById('pull-indicator').style.display = 'block';
+      sfx.pull();
+    };
+    const onMove = (e) => {
+      if (!this.isAiming) return;
+      e.preventDefault();
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
+      const x = e.touches ? e.touches[0].clientX : e.clientX;
+      const dy = y - this.aimStartY;
+      const dx = x - this.aimStartX;
+      this.pullPower = Math.min(Math.max(dy / 200, 0), 1); // Pull down = more power
+      this.pullAngle = Math.min(Math.max(-dx / 300, -0.5), 0.5); // Left/right aim
+
+      // Visual feedback
+      const indicator = document.getElementById('pull-indicator');
+      const pct = Math.round(this.pullPower * 100);
+      indicator.textContent = `Power: ${pct}% ${pct > 70 ? '🔥' : pct > 30 ? '💪' : '👆'}`;
+
+      // Pull bird back visually
+      if (this.birdOnSling) {
+        this.birdOnSling.object3D.position.set(
+          this.slingPos.x - this.pullPower * 0.06 + this.pullAngle * 0.03,
+          this.slingPos.y + 0.07 - this.pullPower * 0.03,
+          this.slingPos.z + 0.01
+        );
+      }
+    };
+    const onUp = (e) => {
+      if (!this.isAiming) return;
+      this.isAiming = false;
+      document.getElementById('pull-indicator').style.display = 'none';
+
+      if (this.pullPower > 0.08) {
+        this.launchBird();
+      } else {
+        // Snap bird back
+        if (this.birdOnSling) {
+          this.birdOnSling.object3D.position.set(
+            this.slingPos.x,
+            this.slingPos.y + 0.07,
+            this.slingPos.z + 0.01
+          );
+        }
+      }
+    };
+
+    // Delay adding listeners until scene canvas is ready
+    scene.addEventListener('loaded', () => {
+      const c = scene.canvas;
+      c.addEventListener('touchstart', onDown, { passive: false });
+      c.addEventListener('touchmove', onMove, { passive: false });
+      c.addEventListener('touchend', onUp);
+      c.addEventListener('mousedown', onDown);
+      c.addEventListener('mousemove', onMove);
+      c.addEventListener('mouseup', onUp);
+    });
+
+    // ---- Start button ----
+    document.getElementById('go').onclick = async () => {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      document.getElementById('start-screen').style.display = 'none';
+      const sys = scene.systems['mindar-image-system'];
+      sys.start();
+    };
+
+    // ---- Replay button ----
+    document.getElementById('replay-btn').onclick = () => {
+      this.resetGame();
+    };
+  },
+
+  placeBirdOnSling() {
+    // Remove old bird if exists
+    if (this.birdOnSling) {
+      this.birdOnSling.parentNode.removeChild(this.birdOnSling);
+    }
+    const birdEl = createRedBird(this.stage, 1.0);
+    birdEl.object3D.position.set(this.slingPos.x, this.slingPos.y + 0.07, this.slingPos.z + 0.01);
+
+    // Idle bobbing animation
+    birdEl.setAttribute('animation', 'property: position; dir: alternate; dur: 800; loop: true; ' +
+      `to: ${this.slingPos.x} ${this.slingPos.y + 0.08} ${this.slingPos.z + 0.01}; easing: easeInOutSine`);
+
+    this.birdOnSling = birdEl;
+    this.canLaunch = true;
+    this.launched = false;
+  },
+
+  launchBird() {
+    if (!this.birdOnSling || this.launched) return;
+    this.launched = true;
+    this.canLaunch = false;
+    this.birdsRemaining--;
+    document.getElementById('birds-left').textContent = `🐦 × ${this.birdsRemaining}`;
+
+    sfx.launch();
+
+    // Remove idle animation
+    this.birdOnSling.removeAttribute('animation');
+
+    // Calculate velocity based on pull
+    const power = this.pullPower;
+    const angle = this.pullAngle;
+    const speed = 0.3 + power * 0.7;
+
+    const proj = {
+      el: this.birdOnSling,
+      vx: speed * (0.8 + angle),
+      vy: speed * (0.6 + (1 - power) * 0.3),
+      vz: 0,
+      life: 0,
+      active: true,
+      hasHit: false
+    };
+    this.projectiles.push(proj);
+    this.birdOnSling = null;
+
+    // Set timer for next bird
+    this.birdResetTimer = 2.5;
+  },
+
+  checkCollisions(proj) {
+    if (proj.hasHit) return;
+    const bp = proj.el.object3D.position;
+
+    // Check collision with tower area
+    const tx = this.towerPos.x;
+    const dx = bp.x - tx;
+    const dy = bp.y - (-0.14); // tower center Y
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < 0.12) {
+      proj.hasHit = true;
+      sfx.hit();
+      this.destroyTower(bp);
+      this.score += 500;
+      this.updateScore();
+    }
+  },
+
+  destroyTower(impactPos) {
+    const towerEl = document.getElementById('tower');
+    if (!towerEl) return;
+
+    // Find all blocks and pigs and animate them breaking apart
+    const blocks = towerEl.querySelectorAll('.block');
+    const pigs = towerEl.querySelectorAll('.pig');
+    const allParts = [...blocks, ...pigs];
+
+    allParts.forEach((part, i) => {
+      const delay = i * 50;
+      setTimeout(() => {
+        // Random explosion direction
+        const ax = (Math.random() - 0.5) * 0.3;
+        const ay = Math.random() * 0.2 + 0.05;
+        const az = (Math.random() - 0.5) * 0.2;
+        const rx = Math.random() * 720;
+        const ry = Math.random() * 720;
+        const rz = Math.random() * 720;
+        const pos = part.object3D ? part.object3D.position : {x:0,y:0,z:0};
+
+        part.setAttribute('animation__pos', {
+          property: 'position',
+          to: `${pos.x + ax} ${pos.y + ay} ${pos.z + az}`,
+          dur: 600, easing: 'easeOutQuad'
+        });
+        part.setAttribute('animation__rot', {
+          property: 'rotation',
+          to: `${rx} ${ry} ${rz}`,
+          dur: 600, easing: 'easeOutQuad'
+        });
+        part.setAttribute('animation__scale', {
+          property: 'scale',
+          to: '0.1 0.1 0.1',
+          dur: 800, delay: 200, easing: 'easeInQuad'
+        });
+
+        if (part.classList.contains('pig')) {
+          sfx.pigOink();
+          this.pigsAlive--;
+          this.score += 1000;
+          this.spawnParticles(pos.x + this.towerPos.x, pos.y + this.towerPos.y, pos.z, '#5cb85c', 8);
+        } else {
+          sfx.destroy();
+          this.spawnParticles(pos.x + this.towerPos.x, pos.y + this.towerPos.y, pos.z, '#D2691E', 4);
+        }
+      }, delay);
+    });
+
+    this.updateScore();
+
+    // Check win condition after destruction
+    setTimeout(() => {
+      if (this.pigsAlive <= 0) {
+        this.victory();
+      }
+    }, 1200);
+  },
+
+  spawnParticles(x, y, z, color, count) {
+    for (let i = 0; i < count; i++) {
+      const p = mk('a-sphere', {
+        radius: 0.005 + Math.random() * 0.008,
+        color: color,
+        position: `${x} ${y} ${z}`,
+        opacity: 0.9
+      }, this.particlesEl);
+      this.particles.push({
+        el: p,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: Math.random() * 0.3 + 0.1,
+        vz: (Math.random() - 0.5) * 0.3,
+        life: 1.0
+      });
+    }
+  },
+
+  updateScore() {
+    document.getElementById('score-box').textContent = `Score: ${this.score}`;
+  },
+
+  victory() {
+    this.gameActive = false;
+    sfx.victory();
+
+    const stars = this.birdsRemaining >= 2 ? '⭐⭐⭐' :
+                  this.birdsRemaining >= 1 ? '⭐⭐' : '⭐';
+    document.getElementById('stars').textContent = stars;
+
+    // Bonus for remaining birds
+    this.score += this.birdsRemaining * 500;
+    this.updateScore();
+
+    document.getElementById('final-score').textContent = `Score: ${this.score}`;
+    document.getElementById('game-over').classList.add('show');
+  },
+
+  gameOver() {
+    this.gameActive = false;
+    document.getElementById('stars').textContent = '💀';
+    document.getElementById('game-over').querySelector('h1').textContent = 'GAME OVER';
+    document.getElementById('final-score').textContent = `Score: ${this.score}`;
+    document.getElementById('game-over').classList.add('show');
+  },
+
+  resetGame() {
+    // Hide game over
+    document.getElementById('game-over').classList.remove('show');
+    document.getElementById('game-over').querySelector('h1').textContent = 'LEVEL COMPLETE!';
+
+    // Reset state
+    this.score = 0;
+    this.birdsRemaining = 3;
+    this.pigsAlive = 3;
+    this.gameActive = true;
+    this.canLaunch = true;
+    this.launched = false;
+    this.updateScore();
+    document.getElementById('birds-left').textContent = `🐦 × ${this.birdsRemaining}`;
+
+    // Clear projectiles
+    this.projectiles.forEach(p => { if (p.el.parentNode) p.el.parentNode.removeChild(p.el); });
+    this.projectiles = [];
+
+    // Clear particles
+    this.particles.forEach(p => { if (p.el.parentNode) p.el.parentNode.removeChild(p.el); });
+    this.particles = [];
+
+    // Rebuild tower
+    const towerEl = document.getElementById('tower');
+    while (towerEl.firstChild) towerEl.removeChild(towerEl.firstChild);
+    this.towerEntity = createTower(towerEl);
+    towerEl.object3D.position.set(this.towerPos.x, this.towerPos.y, this.towerPos.z);
+
+    // Place bird on sling
+    this.placeBirdOnSling();
+  },
+
+  tick(t, dt) {
+    dt = Math.min(dt, 50) / 1000;
+
+    // Sync stage with poster tracking
+    const to = this.target.object3D;
+    if (to.visible) {
+      to.updateWorldMatrix(true, false);
+      to.matrixWorld.decompose(
+        this.stage.object3D.position,
+        this.stage.object3D.quaternion,
+        this.stage.object3D.scale
+      );
+    }
+
+    if (!this.gameActive) return;
+
+    // Update projectiles (flying birds)
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      if (!p.active) continue;
+      p.life += dt;
+      const pos = p.el.object3D.position;
+      pos.x += p.vx * dt;
+      pos.y += p.vy * dt;
+      p.vy -= 0.5 * dt; // gravity
+      pos.z += p.vz * dt;
+
+      // Rotate the bird while flying
+      p.el.object3D.rotation.z -= dt * 6;
+
+      // Trail particles
+      if (Math.random() < 0.4) {
+        this.spawnParticles(pos.x, pos.y, pos.z, '#ff4444', 1);
+      }
+
+      // Check collision
+      this.checkCollisions(p);
+
+      // Remove if too old or below ground
+      if (p.life > 4 || pos.y < -0.5) {
+        p.active = false;
+        if (p.el.parentNode) {
+          p.el.setAttribute('animation__fade', {
+            property: 'scale', to: '0 0 0', dur: 300
+          });
+          setTimeout(() => { if (p.el.parentNode) p.el.parentNode.removeChild(p.el); }, 350);
+        }
+      }
+    }
+
+    // Update particles
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.life -= dt * 2;
+      const pos = p.el.object3D.position;
+      pos.x += p.vx * dt;
+      pos.y += p.vy * dt;
+      p.vy -= 0.6 * dt;
+      pos.z += p.vz * dt;
+      p.el.object3D.scale.setScalar(Math.max(p.life, 0));
+      if (p.life <= 0) {
+        if (p.el.parentNode) p.el.parentNode.removeChild(p.el);
+        this.particles.splice(i, 1);
+      }
+    }
+
+    // Bird reset timer
+    if (this.birdResetTimer > 0) {
+      this.birdResetTimer -= dt;
+      if (this.birdResetTimer <= 0 && !this.birdOnSling) {
+        if (this.birdsRemaining > 0 && this.pigsAlive > 0) {
+          this.placeBirdOnSling();
+        } else if (this.pigsAlive > 0 && this.birdsRemaining <= 0) {
+          // Check if any projectiles are still active
+          const anyActive = this.projectiles.some(p => p.active);
+          if (!anyActive) {
+            this.gameOver();
+          }
+        }
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>
